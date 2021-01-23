@@ -1,0 +1,127 @@
+---
+title: "More Work"
+date: "`r Sys.Date()`"
+author:  Homer White
+output:
+  rmdformats::downcute:
+    toc_depth: 2
+    self_contained: true
+    highlight:  tango
+    lightbox: true
+    code_download: true
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(tigerstats)
+## Global options
+options(dplyr.inform.summarize = FALSE)
+knitr::opts_chunk$set(
+  out.width = "90%",
+  fig.align = "center",
+  tidy = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+
+
+## Import the Data
+
+```{r}
+df <- read_xlsx(
+  "data/Blastexposure.xlsx"
+)
+```
+
+Summarize the data set to get an idea of the variables and their values:
+
+```{r}
+summary(df)
+```
+
+That didn't tell me much.  I should figure out what's in `DiagA`:
+
+```{r}
+df %>% 
+  pull(DiagA) %>% 
+  unique() %>% 
+  sort()
+```
+
+Seems clear enough!
+
+## Some Tables
+
+OK, let's see if there is a relationship between exposure to blasts and PTSD:
+
+```{r}
+tab2 <- xtabs(~ NumBlasts + DiagA, data = df)
+tab2
+```
+
+Holy moly!  Looks like the more blasts you get, the greater the likelihood of PTSD.
+
+Let's rename and recode a bit:
+
+```{r}
+df2 <- 
+  df %>% 
+  rename(diagnosis = DiagA) %>% 
+  mutate(blast_exposure = case_when(
+    NumBlasts == 0 ~ "0 blasts",
+    NumBlasts == 1 ~ "1 blast",
+    NumBlasts == 2 ~ "2+ blasts"
+    )) %>% 
+  mutate(blast_exposure = factor(
+    blast_exposure,
+    levels = c("0 blasts", "1 blast", "2+ blasts")
+  ))
+```
+
+
+Another table:
+
+```{r}
+df2 %>%
+  drop_na(blast_exposure, diagnosis) %>% 
+  group_by(blast_exposure) %>% 
+  summarize(
+    PTSD = sum(diagnosis == "PTSD"),
+    total = n(),
+    percent = PTSD / total
+  )
+```
+
+## Some Graphs
+
+Go for a bar graphs:
+
+```{r fig.cap = "nice caption"}
+df2 %>% 
+  xtabs(~ blast_exposure + diagnosis, data = .) %>% 
+  mosaicplot(
+    main = "Mosic Plot of Diagnosi vs. Blast Exposure",
+    xlab = "Number of blasts",
+    ylab = "Diagnosis"
+  )
+```
+
+## Some Inferential Statistics
+
+A $\chi^2$-test is appropriate here:
+
+```{r}
+chisqtestGC(
+  ~ blast_exposure + diagnosis,
+  data = df2
+)
+```
+
+We have overwhelmingly strong evidence that folks exposed to more blasts are more likely to be diagnosed with PTSD.
+
+
+

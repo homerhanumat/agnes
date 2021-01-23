@@ -1,0 +1,451 @@
+---
+title: "Exploratory Work"
+date: "`r Sys.Date()`"
+author:  Homer White
+output:
+  rmdformats::material:
+    #toc_depth: 2
+    self_contained: true
+    highlight:  tango
+    lightbox: true
+    code_download: true
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(kableExtra)
+library(tigerstats)
+## Global options
+options(dplyr.inform.summarize = FALSE)
+knitr::opts_chunk$set(
+  out.width = "90%",
+  fig.align = "center",
+  tidy = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+
+# Packages Needed
+
+```{r eval = FALSE}
+library(tidyverse)
+library(readxl)
+library(tigerstats)
+```
+
+# Import the Data
+
+I saved the Excel file to a folder in my project called `data`.  I removed the second row of the Excel file, since it contained no useful information, and I renamed the file to `vets.xlsx`.
+
+Apparently we are interested in the first sheet.  The R-function `read_xlsx()` reads in the first sheet by default.
+
+We only want to read in the first six columns of that first sheet, ignoring all of the analysis stuck into subsequent columns, so we use the `range` parameter of the function, as follows:
+
+```{r}
+vets <- read_xlsx(
+  "data/vets.xlsx",
+  range = "A1:F912"
+)
+```
+
+# Some Bar Graphs (One Variable)
+
+Here is a quick bar graph of the ranks of the subjects:
+
+```{r}
+ggplot(vets, aes(x = Rank)) +
+  geom_bar(color = "black", fill = "skyblue")
+```
+
+The ranks, without the NA-values:
+
+```{r}
+vets %>% 
+  drop_na(Rank) %>% 
+  ggplot(aes(x = Rank)) +
+  geom_bar(color = "black", fill = "skyblue")
+```
+
+Suppose you want the Warrant officers to come in between the enlisted and commissioned officers.  In that case, you need to *order* your ranks.  First, find out what your ranks are:
+
+```{r}
+vets %>% 
+  pull(Rank) %>% 
+  unique() %>% 
+  sort()
+```
+
+One approach to re-ordering is to make Rank into a factor variable, with the "levels of the factor in the order you want, like this:
+
+```{r}
+vets2 <-
+  vets %>% 
+  mutate(
+    ordered_rank = factor(
+      Rank,
+      levels = c(
+        "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9",
+        "W2", "W3", "W4", "W5",
+        "O2", "O3", "O4"
+      )
+    )
+  )
+```
+
+Now try the bar graph:
+
+```{r}
+vets2 %>% 
+  drop_na(Rank) %>% 
+  ggplot(aes(x = ordered_rank)) +
+  geom_bar(color = "black", fill = "skyblue") +
+  labs(x = "Rank")
+```
+
+Note that when give a factor, **ggplot2** takes account of the ordering on the levels.
+
+# Grouping, and Some Tables
+
+You are interested in comparing officers with non-officers, and it seems you are willing to lump the officers into one group.  For this, create a new variable:
+
+```{r}
+vets2 <-
+  vets2 %>% 
+  mutate(rank_status = recode(
+    Rank,
+    E1 = "enlisted",
+    E2 = "enlisted",
+    E3 = "enlisted",
+    E4 = "enlisted",
+    E5 = "enlisted",
+    E6 = "enlisted",
+    E7 = "enlisted",
+    E8 = "enlisted",
+    E9 = "enlisted",
+    O2 = "officer",
+    O3 = "officer",
+    O4 = "officer",
+    W2 = "officer",
+    W3 = "officer",
+    W4 = "officer",
+    W5 = "officer"
+  )
+)
+```
+
+**Note**:  That's kinda cumbersome.  As you gain programming experience you'll learn use `case_when()` with some *regular expressions*, like this:
+
+```{r}
+vets2 <-
+  vets2 %>% 
+  mutate(rank_status = 
+           case_when(
+             str_detect(Rank, pattern = "[OW]") ~ "officer",
+             str_detect(Rank, pattern = "E") ~ "enlisted"
+           ))
+```
+
+
+Let's tally that variable:
+
+```{r}
+vets2 %>% 
+  count(rank_status)
+```
+
+
+You are right: not very many officers!
+
+But let's make a bar chart of the `DiagA` variable, broken down by rank status:
+
+```{r}
+vets2 %>% 
+  drop_na(rank_status, DiagA) %>% 
+  ggplot(aes(x = rank_status)) +
+  geom_bar(color = "black", aes(fill = DiagA))
+```
+
+You can improve the look of the bar graph in various ways:
+
+```{r fig.cap="A jazzier bar graph!"}
+vets2 %>% 
+  drop_na(rank_status, DiagA) %>% 
+  ggplot(aes(x = rank_status)) +
+  geom_bar(color = "black", aes(fill = DiagA)) +
+  labs(
+    ## title for the x-axis:
+    x = "Rank",
+    ## title for the graph:
+    title = "Hey, we can make a title!",
+    ## subtitle for the graph:
+    subtitle = "(and even a sub-title, if we like ...)",
+    ## give the legend a better title:
+    fill = "PTSD?"
+  )
+```
+
+
+# Another Version of Your Bar Graph
+
+Make a variable that records whether or not the person was exposed to a blast:
+
+```{r}
+vets3 <-
+  vets2 %>% 
+  mutate(Blast = ifelse(
+    Ref == "B",
+    "blast",
+    "non-blast")
+  )
+```
+
+Now a table:
+
+```{r eval = FALSE}
+vets3 %>% 
+  drop_na(rank_status, DiagA, Blast) %>% 
+  count(rank_status, DiagA, Blast)
+```
+
+```{r echo = FALSE}
+vets3 %>% 
+  drop_na(rank_status, DiagA, Blast) %>% 
+  count(rank_status, DiagA, Blast) %>% 
+  kbl() %>% 
+  kable_paper("hover", full_width = FALSE)
+```
+
+
+Now for a bar chart:
+
+```{r}
+vets3 %>% 
+  drop_na(rank_status, DiagA, Blast) %>% 
+  ggplot(aes(x = rank_status)) +
+  geom_bar(color = "black", aes(fill = DiagA)) +
+  facet_wrap(~ Blast) +
+  labs(x = "Rank", fill = "PTSD?")
+```
+
+But you might want to show percentages:
+
+```{r}
+ptsd_table <-
+  vets3 %>% 
+  drop_na(rank_status, DiagA, Blast) %>% 
+  group_by(rank_status, Blast) %>% 
+  count(DiagA) %>% 
+  mutate(perc = n / sum(n) * 100)
+```
+
+```{r eval = FALSE}
+ptsd_table
+```
+
+```{r echo = FALSE}
+ptsd_table %>% 
+  ungroup() %>% 
+  select(DiagA, n, perc) %>% 
+  rename(Diagnosis = DiagA,
+         Count = n,
+         Percentage = perc) %>% 
+  kbl(caption = "Percentages of PTSD or not, grouped") %>%
+  kable_classic(full_width = FALSE) %>%
+  pack_rows("Enlisted, exposed to blast", 1, 2) %>%
+  pack_rows("Enlisted, not exposed to blast", 3,4) %>%
+  pack_rows("Officer, exposed to blast", 5, 6) %>%
+  pack_rows("Officer, exposed to blast", 7, 8)
+```
+
+
+
+
+
+Now make the bar graph from the table, instead of making it from the original data.  The key is to use the argument `stat = "identity"` to make the height of the bars equal to the percentages:
+
+```{r}
+ptsd_table %>% 
+  ggplot(aes(x = Blast, y = perc)) +
+  geom_bar(
+    color = "black", 
+    aes(fill = DiagA),
+    position = "dodge",
+    stat = "identity") +
+  facet_wrap(~ rank_status) +
+  labs(x = "Whether or not exposed to blast", 
+       y = "Percentage", fill = "PTSD?")
+```
+
+
+# Making This Document
+
+## Reproducing the Document
+
+This file was made with R Markdown.  For more on R Markdown, consult the following two resources:
+
+* [RStudio's R Markdown site](https://rmarkdown.rstudio.com/)
+* [_R Markdown:  the Definitive Guide_](https://bookdown.org/yihui/rmarkdown/)
+
+This file was made from the **material** template provided by the [`rmdformats`` package](https://github.com/juba/rmdformats).  In order to reproduce it:
+
+* Press the Code button near the top of the document and download the .Rmd file, saving it to your project directory at the same level as your data folder.
+* Modify your Excel file as I described above.
+* Install some packages that the file uses:
+
+    ```{r eval = FALSE}
+    install.packages(c("tidyverse", "readxl")) ## you already did this
+    install.packages("kableExtra")
+    install.packages("remotes")
+    install.packages("tigerstats")
+    install.packages("DT")
+    remotes::install_github("juba/rmdformats")
+    ```
+* Open the file in RStudio and press the Knit button.
+
+__Suggestion:__  There are settings for knitting:  press the down arrow next to the cog above the source file to see them.  Choose the option _Preview in Viewer Pane_.  Then whenever you knit, the document shows up in a Viewer Pane in the lower right of RStudio.  If you want to pop it up into your browser for a larger view, there is a button to do so.
+
+## Publishing Documents
+
+You can publish your documents for to [RPubs](https://rpubs.com):
+
+* Visit [RPubs](https://rpubs.com) and set up your free account.
+* Open your R Markdown document and knit it.
+* Looking at the preview of the knitted version, you should see a Publish button.  (It is blue and looks like an eye, and the tooltip "Publish the application or document" appears when you hover over it.)
+* Press this button and follow the steps.  Choose a nice short name for the "slug", as this will make the URL for your document easy for others to remember.
+* Your browser will open a new tab, showing the published document.
+
+You can always update the document by pressing the publish button on a future version.
+
+# Chi-Square Test
+
+Just the people exposed to a blast:
+
+```{r}
+blasted <- 
+  vets3 %>% 
+  filter(Blast == "blast")
+```
+
+Make cross table of rank status vs. diagnosis:
+
+```{r}
+tab <- xtabs(~ rank_status + DiagA, data = blasted)
+tab
+```
+
+
+Now for the chi-square test:
+
+```{r}
+tigerstats::chisqtestGC(tab, correct = FALSE)
+```
+
+
+Fisher exact test:
+
+```{r}
+fisher.test(tab)
+```
+
+# Number of Blasts
+
+## Import the Data
+
+```{r}
+df <- read_xlsx(
+  "data/Blastexposure.xlsx"
+)
+```
+
+Summarize the data set to get an idea of the variables and their values:
+
+```{r}
+summary(df)
+```
+
+That didn't tell me much.  I should figure out what's in `DiagA`:
+
+```{r}
+df %>% 
+  pull(DiagA) %>% 
+  unique() %>% 
+  sort()
+```
+
+Seems clear enough!
+
+## Some Tables
+
+OK, let's see if there is a relationship between exposure to blasts and PTSD:
+
+```{r}
+tab2 <- xtabs(~ NumBlasts + DiagA, data = df)
+tab2
+```
+
+Holy moly!  Looks like the more blasts you get, the greater the likelihood of PTSD.
+
+Let's rename and recode a bit:
+
+```{r}
+df2 <- 
+  df %>% 
+  rename(diagnosis = DiagA) %>% 
+  mutate(blast_exposure = case_when(
+    NumBlasts == 0 ~ "0 blasts",
+    NumBlasts == 1 ~ "1 blast",
+    NumBlasts == 2 ~ "2+ blasts"
+    )) %>% 
+  mutate(blast_exposure = factor(
+    blast_exposure,
+    levels = c("0 blasts", "1 blast", "2+ blasts")
+  ))
+```
+
+
+Another table:
+
+```{r}
+df2 %>%
+  drop_na(blast_exposure, diagnosis) %>% 
+  group_by(blast_exposure) %>% 
+  summarize(
+    PTSD = sum(diagnosis == "PTSD"),
+    total = n(),
+    percent = PTSD / total
+  )
+```
+
+## Some Graphs
+
+Go for a bar graphs:
+
+```{r fig.cap = "nice caption"}
+df2 %>% 
+  xtabs(~ blast_exposure + diagnosis, data = .) %>% 
+  mosaicplot(
+    main = "Mosic Plot of Diagnosi vs. Blast Exposure",
+    xlab = "Number of blasts",
+    ylab = "Diagnosis"
+  )
+```
+
+## some Inferential Statistics
+
+A $\chi^2$-test is appropriate here:
+
+```{r}
+chisqtestGC(
+  ~ blast_exposure + diagnosis,
+  data = df2
+)
+```
+
+We have overwhelmingly strong evidence that folks exposed to more blasts are more likely to be diagnosed with PTSD.
+
+
+
